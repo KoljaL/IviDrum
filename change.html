@@ -1,0 +1,479 @@
+<html lang="en-us" class="vhmhcatkbr idc0_350">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width" />
+  <title>Voice-change-O-matic</title>
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon" />
+  <style>
+    html {
+      height: 100%;
+      font-size: 10px;
+      background-color: #121212;
+      color-scheme: dark;
+      font-family: sans-serif;
+    }
+
+    body {
+      width: 100%;
+      height: inherit;
+      background-color: #1e1e1e;
+    }
+
+    h1,
+    h2,
+    label {
+      font-size: 3rem;
+      text-align: center;
+      color: #ffffff;
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 3.5rem;
+      padding-top: 1.2rem;
+    }
+
+    .wrapper {
+      height: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+
+    header {
+      height: 120px;
+    }
+
+    canvas {
+      /* margin-bottom: -3px; */
+    }
+
+
+    button,
+    form a {
+      text-align: center;
+      color: white;
+      border: none;
+      width: 90%;
+      margin: 1rem auto 0.5rem;
+      max-width: 80%;
+      font-size: 1.6rem;
+      line-height: 3rem;
+      padding: 0.5rem;
+      display: block;
+    }
+
+
+
+    /* || Checkbox hack to control information box display */
+
+    label[for='toggle'] {
+      font-size: 3rem;
+      position: absolute;
+      top: 4px;
+      right: 5px;
+      z-index: 5;
+      cursor: pointer;
+    }
+
+    input[type='checkbox'] {
+      position: absolute;
+      top: -100px;
+    }
+
+    aside {
+      position: fixed;
+      top: 0;
+      left: 0;
+      padding-top: 1.5rem;
+      width: 100%;
+      height: 100%;
+      transform: translateX(100%);
+      transition: 0.6s all;
+      background-color: #2d2d2d;
+    }
+
+    aside p,
+    aside li {
+      font-size: 1.6rem;
+      line-height: 1.3;
+      padding: 0rem 2rem 1rem;
+      color: white;
+    }
+
+    aside li {
+      padding-left: 10px;
+    }
+
+    /* Toggled State of information box */
+
+    input[type='checkbox']:checked~aside {
+      transform: translateX(0);
+    }
+
+    /* || Link styles */
+
+    a {
+      color: #bb86fc;
+    }
+
+    a:hover,
+    a:focus {
+      text-decoration: none;
+    }
+
+    footer {
+      position: fixed;
+      bottom: 0;
+      color: #817878;
+      margin-top: 1rem;
+      display: flex;
+      justify-content: space-around;
+
+      width: 100%;
+
+    }
+
+    footer a {
+      color: #bb86fc;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrapper">
+    <header>
+      <h1>Voice-change-O-matic</h1>
+    </header>
+
+    <canvas class="visualizer" width="800" height="100"></canvas>
+
+    <form class="controls">
+      <div>
+        <a class="mute" id="">Mute</a>
+        <a class="record" id="">Rec</a>
+      </div>
+    </form>
+  </div>
+
+  <footer>
+    <a href="https://developer.mozilla.org/en-US/docs/Web/API/Navigator.getUserMedia" title="which is currently supported in Firefox, Opera (desktop/mobile) and Chrome (desktop only.) Firefox requires no prefix; the others require webkitprefixes.">getUserMedia</a>
+    <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API" title=" which is currently supported in Firefox, Chrome, Safari (desktop/mobile) and Opera (desktop only). Firefox and Opera require no prefix; Chrome requires webkit prefixes.">Web Audio API</a>
+  </footer>
+
+
+  <script>
+    const heading = document.querySelector('h1');
+    heading.textContent = 'CLICK HERE TO START';
+    document.body.addEventListener('click', init);
+    const mute = document.querySelector('.mute');
+    let gainNode;
+
+    // / Set up canvas context for visualizer
+    const canvas = document.querySelector('.visualizer');
+    const canvasCtx = canvas.getContext('2d');
+    const intendedWidth = document.querySelector('.wrapper').clientWidth;
+    canvas.setAttribute('width', intendedWidth);
+
+
+    const recButton = document.querySelector('.record');
+    recButton.addEventListener('click', recordAudio);
+
+    function recordAudio(analyser) {
+      console.log('recording');
+    }
+
+    async function init() {
+      heading.textContent = 'Audio Visualizer';
+      document.body.removeEventListener('click', init);
+
+      const audioCtx = new AudioContext();
+      let source;
+
+      // Create nodes
+      const analyser = audioCtx.createAnalyser();
+      const gainNode = audioCtx.createGain(); // To adjust input gain
+      const biquadFilter = audioCtx.createBiquadFilter(); // To reduce noise
+
+      analyser.minDecibels = -90;
+      analyser.maxDecibels = -10;
+      analyser.smoothingTimeConstant = 0.85;
+
+      // Configure the filter
+      biquadFilter.type = 'lowpass'; // Use a low-pass filter
+      biquadFilter.frequency.value = 700; // Set frequency threshold to remove high-frequency noise
+
+      // Request microphone access
+      const constraints = {audio: true};
+      navigator.mediaDevices
+        .getUserMedia(constraints)
+        .then((stream) => {
+          // Create audio stream source
+          source = audioCtx.createMediaStreamSource(stream);
+
+          // Connect nodes: Source → Filter → Gain → Analyser → Destination
+          source.connect(biquadFilter);
+          biquadFilter.connect(gainNode);
+          gainNode.connect(analyser);
+          analyser.connect(audioCtx.destination);
+
+          // Visualize the clean audio
+          visualize(analyser);
+        })
+        .catch((err) => {
+          console.error('The following gUM error occurred: ' + err);
+        });
+    }
+
+    // Visualization logic
+    function visualize(analyser) {
+      const canvas = document.querySelector('canvas');
+      const canvasCtx = canvas.getContext('2d');
+
+      analyser.fftSize = 2048;
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+
+      function draw() {
+        requestAnimationFrame(draw);
+
+        analyser.getByteTimeDomainData(dataArray);
+
+        canvasCtx.fillStyle = 'rgb(0, 0, 0)';
+        canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+
+        canvasCtx.lineWidth = 2;
+        canvasCtx.strokeStyle = 'rgb(0, 255, 0)';
+
+        canvasCtx.beginPath();
+
+        const sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const v = dataArray[i] / 128.0;
+          const y = (v * canvas.height) / 2;
+
+          if (i === 0) {
+            canvasCtx.moveTo(x, y);
+          } else {
+            canvasCtx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        canvasCtx.lineTo(canvas.width, canvas.height / 2);
+        canvasCtx.stroke();
+      }
+
+      draw();
+    }
+
+    // Add event listener to start the app
+    // document.body.addEventListener('click', init);
+
+
+    // async function init() {
+    //   heading.textContent = 'Voice-change-O-matic';
+    //   document.body.removeEventListener('click', init);
+
+    //   const audioCtx = new AudioContext();
+    //   let source;
+    //   let stream;
+    //   let drawVisual;
+
+
+    //   // Set up the different audio nodes we will use for the app
+    //   const analyser = audioCtx.createAnalyser();
+    //   analyser.minDecibels = -90;
+    //   analyser.maxDecibels = -10;
+    //   analyser.smoothingTimeConstant = 0.85;
+    //   console.log(analyser);
+
+    //   const distortion = audioCtx.createWaveShaper();
+    //   gainNode = audioCtx.createGain();
+    //   const biquadFilter = audioCtx.createBiquadFilter();
+    //   const convolver = audioCtx.createConvolver();
+    //   const echoDelay = createEchoDelayEffect(audioCtx);
+
+
+    //   // Main block for doing the audio recording
+    //   const constraints = {audio: true};
+    //   navigator.mediaDevices
+    //     .getUserMedia(constraints)
+    //     .then((stream) => {
+    //       source = audioCtx.createMediaStreamSource(stream);
+    //       source.connect(distortion);
+    //       distortion.connect(biquadFilter);
+    //       biquadFilter.connect(gainNode);
+    //       convolver.connect(gainNode);
+    //       echoDelay.placeBetween(gainNode, analyser);
+    //       analyser.connect(audioCtx.destination);
+
+    //       visualize(analyser);
+    //     })
+    //     .catch(function (err) {
+    //       console.error('The following gUM error occured: ' + err);
+    //     });
+    // }
+
+    // function visualizeOLD(analyser) {
+    //   const WIDTH = canvas.width;
+    //   const HEIGHT = canvas.height;
+
+    //   analyser.fftSize = 2048;
+    //   const bufferLength = analyser.fftSize;
+    //   console.log(bufferLength);
+
+    //   // We can use Float32Array instead of Uint8Array if we want higher precision
+    //   // const dataArray = new Float32Array(bufferLength);
+    //   const dataArray = new Uint8Array(bufferLength);
+    //   canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+    //   const draw = () => {
+    //     drawVisual = requestAnimationFrame(draw);
+    //     analyser.getByteTimeDomainData(dataArray);
+    //     canvasCtx.fillStyle = 'rgb(50, 50, 50)';
+    //     canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+    //     canvasCtx.lineWidth = 2;
+    //     canvasCtx.strokeStyle = 'rgb(200, 200, 200)';
+    //     canvasCtx.beginPath();
+
+    //     const sliceWidth = (WIDTH * 1.0) / bufferLength;
+    //     let x = 0;
+
+    //     for (let i = 0; i < bufferLength; i++) {
+    //       const v = dataArray[i] / 128.0;
+    //       const y = (v * HEIGHT) / 2;
+
+    //       if (i === 0) {
+    //         canvasCtx.moveTo(x, y);
+    //       } else {
+    //         canvasCtx.lineTo(x, y);
+    //       }
+
+    //       x += sliceWidth;
+    //     }
+
+    //     canvasCtx.lineTo(WIDTH, HEIGHT / 2);
+    //     canvasCtx.stroke();
+    //   };
+
+    //   draw();
+    // }
+
+
+
+    // function createEchoDelayEffect(audioContext) {
+    //   const delay = audioContext.createDelay(1);
+    //   const dryNode = audioContext.createGain();
+    //   const wetNode = audioContext.createGain();
+    //   const mixer = audioContext.createGain();
+    //   const filter = audioContext.createBiquadFilter();
+
+    //   delay.delayTime.value = 0;
+    //   dryNode.gain.value = 1;
+    //   wetNode.gain.value = 0;
+    //   filter.frequency.value = 1100;
+    //   filter.type = 'highpass';
+    //   return {
+    //     apply() {
+    //       wetNode.gain.setValueAtTime(0.75, audioContext.currentTime);
+    //     },
+    //     discard() {
+    //       wetNode.gain.setValueAtTime(0, audioContext.currentTime);
+    //     },
+    //     isApplied() {
+    //       return wetNode.gain.value > 0;
+    //     },
+    //     placeBetween(inputNode, outputNode) {
+    //       inputNode.connect(delay);
+    //       delay.connect(wetNode);
+    //       wetNode.connect(filter);
+    //       filter.connect(delay);
+
+    //       inputNode.connect(dryNode);
+    //       dryNode.connect(mixer);
+    //       wetNode.connect(mixer);
+    //       mixer.connect(outputNode);
+    //     },
+    //   };
+    // }
+
+
+
+    mute.addEventListener('click', () => {
+      if (mute.id === '') {
+        gainNode.gain.value = 0;
+        mute.id = 'activated';
+        mute.innerHTML = 'Unmute';
+      } else {
+        gainNode.gain.value = 1;
+        mute.id = '';
+        mute.innerHTML = 'Mute';
+      }
+      console.log('gainNode.gain.value:', gainNode.gain.value);
+    });
+
+
+
+
+    // else if (visualSetting == 'frequencybars') {
+    // analyser.fftSize = 256;
+    // const bufferLengthAlt = analyser.frequencyBinCount;
+    // console.log(bufferLengthAlt);
+    // // See comment above for Float32Array()
+    // const dataArrayAlt = new Uint8Array(bufferLengthAlt);
+    // canvasCtx.clearRect(0, 0, WIDTH, HEIGHT);
+    // const drawAlt = () => {
+    // drawVisual = requestAnimationFrame(drawAlt);
+    // analyser.getByteFrequencyData(dataArrayAlt);
+    // canvasCtx.fillStyle = 'rgb(0, 0, 0)';
+    // canvasCtx.fillRect(0, 0, WIDTH, HEIGHT);
+    // const barWidth = (WIDTH / bufferLengthAlt) * 2.5;
+    // let x = 0;
+    // for (let i = 0; i < bufferLengthAlt; i++) {
+    // const barHeight = dataArrayAlt[i];
+    // canvasCtx.fillStyle = 'rgb(' + (barHeight + 100) + ',50,50)';
+    // canvasCtx.fillRect(x, HEIGHT - barHeight / 2, barWidth, barHeight / 2);
+    // x += barWidth + 1;
+    // }
+    // };
+    // drawAlt();
+    // }
+
+
+
+    // function voiceChange() {
+    //   distortion.oversample = '4x';
+    //   biquadFilter.gain.setTargetAtTime(0, audioCtx.currentTime, 0);
+    //   const voiceSetting = voiceSelect.value;
+    //   console.log(voiceSetting);
+    //   if (echoDelay.isApplied()) {
+    //     echoDelay.discard();
+    //   }
+    //   // When convolver is selected it is connected back into the audio path
+    //   if (voiceSetting == 'convolver') {
+    //     biquadFilter.disconnect(0);
+    //     biquadFilter.connect(convolver);
+    //   } else {
+    //     biquadFilter.disconnect(0);
+    //     biquadFilter.connect(gainNode);
+    //     if (voiceSetting == 'distortion') {
+    //       distortion.curve = makeDistortionCurve(400);
+    //     } else if (voiceSetting == 'biquad') {
+    //       biquadFilter.type = 'lowshelf';
+    //       biquadFilter.frequency.setTargetAtTime(1000, audioCtx.currentTime, 0);
+    //       biquadFilter.gain.setTargetAtTime(25, audioCtx.currentTime, 0);
+    //     } else if (voiceSetting == 'delay') {
+    //       echoDelay.apply();
+    //     } else if (voiceSetting == 'off') {
+    //       console.log('Voice settings turned off');
+    //     }
+    //   }
+    // }
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drum Trainer - Frequency Visualization</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #222;
+      color: white;
+      text-align: center;
+    }
+
+    h1 {
+      margin-top: 20px;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 80%;
+      position: absolute;
+    }
+
+    .main-text {
+      position: absolute;
+      top: 40%;
+      width: 100%;
+      font-size: 40px;
+    }
+
+    .sub-text {
+      position: absolute;
+      top: 60%;
+      width: 100%;
+      font-size: 30px;
+    }
+
+    .sub-text span {
+      font-size: 35px;
+    }
+
+    .button-container {
+      position: absolute;
+      top: 85%;
+      width: 100%;
+    }
+
+    button {
+      padding: 13px 28px;
+      font-size: 20px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      color: white;
+      transition: background-color 200ms linear;
+    }
+
+    .green-button {
+      background-color: #4caf50;
+    }
+
+    .green-button:hover {
+      background-color: #3e8e41;
+    }
+
+    .red-button {
+      background-color: #db6247;
+    }
+
+    .red-button:hover {
+      background-color: #cc5338;
+    }
+
+    path {
+      stroke: white;
+      stroke-width: 0.5px;
+    }
+
+    @media only screen and (max-width: 500px) {
+      .main-text {
+        font-size: 35px;
+      }
+
+      .sub-text {
+        font-size: 28px;
+      }
+
+      .sub-text span {
+        font-size: 30px;
+      }
+
+      button {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <h1 class="main-text">Please allow the use of your microphone.</h1>
+  <h1 class="sub-text"></h1>
+  <svg id="visualizer" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <mask id="mask">
+        <g id="maskGroup"></g>
+      </mask>
+      <linearGradient id="gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%" style="stop-color: #db6247; stop-opacity: 1" />
+        <stop offset="40%" style="stop-color: #f6e5d1; stop-opacity: 1" />
+        <stop offset="60%" style="stop-color: #5c79c7; stop-opacity: 1" />
+        <stop offset="85%" style="stop-color: #b758c0; stop-opacity: 1" />
+        <stop offset="100%" style="stop-color: #222; stop-opacity: 1" />
+      </linearGradient>
+    </defs>
+    <rect x="0" y="0" width="100%" height="100%" fill="url(#gradient)" mask="url(#mask)"></rect>
+  </svg>
+  <div class="button-container">
+    <button id="controlButton" class="green-button">Start Listening</button>
+  </div>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const visualizer = document.getElementById('visualizer');
+      const maskGroup = document.getElementById('maskGroup');
+      const mainText = document.querySelector('.main-text');
+      const subText = document.querySelector('.sub-text');
+      const controlButton = document.getElementById('controlButton');
+
+      let audioContext, analyser, frequencyData;
+      let isListening = false;
+      let loudVolumeDuration = 0;
+      const loudVolumeThreshold = 30;
+
+      const setupVisualizer = () => {
+        for (let i = 0; i < 255; i++) {
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('stroke-dasharray', '4,1');
+          maskGroup.appendChild(path);
+        }
+      };
+
+      const updatePaths = () => {
+        const paths = maskGroup.children;
+        if (isListening) {
+          analyser.getByteFrequencyData(frequencyData);
+          Array.from(paths).forEach((path, i) => {
+            const adjustedHeight = Math.floor(frequencyData[i] / 2);
+            path.setAttribute('d', `M ${i},255 l 0,-${adjustedHeight}`);
+          });
+        } else {
+          Array.from(paths).forEach((path) => path.setAttribute('d', 'M 0,255 l 0,0'));
+        }
+        requestAnimationFrame(updatePaths);
+      };
+
+      const updateVolumeDisplay = () => {
+        setTimeout(updateVolumeDisplay, 500);
+        if (isListening) {
+          analyser.getByteFrequencyData(frequencyData);
+          const rms = Math.sqrt(frequencyData.reduce((sum, val) => sum + val * val, 0) / frequencyData.length);
+          const db = 20 * Math.log10(rms || 1);
+
+          mainText.textContent = `${Math.max(0, Math.floor(db))} dB`;
+          if (db >= loudVolumeThreshold) {
+            loudVolumeDuration += 0.5;
+            subText.innerHTML = `You’ve been in a loud environment for <span>${Math.floor(loudVolumeDuration)}</span> seconds.`;
+          } else {
+            loudVolumeDuration = 0;
+            subText.textContent = '';
+          }
+        } else {
+          mainText.textContent = 'Please allow the use of your microphone.';
+          subText.textContent = '';
+        }
+      };
+
+      const toggleListening = () => {
+        if (isListening) {
+          isListening = false;
+          controlButton.textContent = 'Start Listening';
+          controlButton.className = 'green-button';
+        } else {
+          navigator.mediaDevices
+            .getUserMedia({audio: true})
+            .then((stream) => {
+              if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 512;
+                frequencyData = new Uint8Array(analyser.frequencyBinCount);
+                const source = audioContext.createMediaStreamSource(stream);
+                source.connect(analyser);
+              }
+              isListening = true;
+              controlButton.textContent = 'Stop Listening';
+              controlButton.className = 'red-button';
+            })
+            .catch(() => {
+              mainText.textContent = 'Microphone access denied.';
+            });
+        }
+      };
+
+      setupVisualizer();
+      updatePaths();
+      updateVolumeDisplay();
+
+      controlButton.addEventListener('click', toggleListening);
+    });
+  </script>
+</body>
+
+</html>

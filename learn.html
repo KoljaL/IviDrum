@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Geräusche erkennen</title>
+    </head>
+    <body>
+        <h1>Geräusche erkennen</h1>
+        <button id="start">Mikrofon starten</button>
+        <button id="anlernen">Geräusch anlernen</button>
+        <button id="erkennen">Geräusch erkennen</button>
+        <p id="output"></p>
+        <script>
+            let audioContext, analyser, dataArray, source;
+            let learnedSignature = null;
+            let isRecording = false;
+            let recordedSignatures = [];
+            let audioInitialized = false;
+
+            async function initAudio() {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    source = audioContext.createMediaStreamSource(stream);
+                    source.connect(analyser);
+
+                    analyser.fftSize = 256;
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+                    audioInitialized = true;
+                    console.log('Audio initialisiert!');
+                } catch (error) {
+                    console.error('Fehler beim Initialisieren von Audio:', error);
+                }
+            }
+            function captureSignature() {
+                if (!analyser) {
+                    console.error('AnalyserNode ist nicht initialisiert!');
+                    return null;
+                }
+                analyser.getByteFrequencyData(dataArray);
+                console.log('Signatur aufgenommen:', dataArray);
+                return Array.from(dataArray);
+            }
+
+            document.getElementById('start').addEventListener('click', async () => {
+                if (!audioInitialized) {
+                    await initAudio();
+                }
+                document.getElementById('output').textContent = 'Mikrofon aktiv.';
+            });
+
+            document.getElementById('anlernen').addEventListener('click', () => {
+                if (!audioInitialized) {
+                    document.getElementById('output').textContent = 'Bitte zuerst das Mikrofon starten!';
+                    return;
+                }
+
+                // Eingabe für Start- und Endzeitpunkt
+                const startTime = parseInt(prompt('Startzeit (in Sekunden):', '0'));
+                const duration = parseInt(prompt('Dauer der Aufnahme (in Sekunden):', '3'));
+
+                if (isNaN(startTime) || isNaN(duration) || startTime < 0 || duration <= 0) {
+                    document.getElementById('output').textContent = 'Ungültige Zeitangaben.';
+                    return;
+                }
+
+                // Aufnahmeprozess
+                setTimeout(() => {
+                    isRecording = true;
+                    recordedSignatures = [];
+                    document.getElementById('output').textContent = 'Anlernen gestartet...';
+
+                    // Automatisch nach Ablauf der Dauer stoppen
+                    setTimeout(() => {
+                        isRecording = false;
+                        learnedSignature = averageSignatures(recordedSignatures);
+                        document.getElementById('output').textContent = 'Geräusch erfolgreich angelernt!';
+                    }, duration * 1000);
+                }, startTime * 1000);
+            });
+
+            document.getElementById('erkennen').addEventListener('click', () => {
+                if (!learnedSignature) {
+                    document.getElementById('output').textContent = 'Bitte zuerst ein Geräusch anlernen!';
+                    return;
+                }
+                const currentSignature = captureSignature();
+                const similarity = compareSignatures(learnedSignature, currentSignature);
+                document.getElementById('output').textContent = similarity > 0.8 ? 'Geräusch erkannt!' : 'Geräusch nicht erkannt.';
+            });
+
+            function compareSignatures(sig1, sig2) {
+                // Ähnlichkeit berechnen (z. B. Kosinus-Ähnlichkeit)
+                const dotProduct = sig1.reduce((sum, val, i) => sum + val * sig2[i], 0);
+                const magnitude1 = Math.sqrt(sig1.reduce((sum, val) => sum + val * val, 0));
+                const magnitude2 = Math.sqrt(sig2.reduce((sum, val) => sum + val * val, 0));
+                return dotProduct / (magnitude1 * magnitude2);
+            }
+
+            // Aufnahme der Frequenzdaten in Echtzeit
+            function captureSignature() {
+                if (!analyser) return;
+                analyser.getByteFrequencyData(dataArray);
+                return Array.from(dataArray);
+            }
+
+            // Periodische Erfassung von Frequenzdaten
+            function startAnalyzing() {
+                if (isRecording) {
+                    const currentSignature = captureSignature();
+                    if (currentSignature) {
+                        recordedSignatures.push(currentSignature);
+                    }
+                }
+                requestAnimationFrame(startAnalyzing);
+            }
+            startAnalyzing();
+
+            // Mittelwert der erfassten Signaturen berechnen
+            function averageSignatures(signatures) {
+                if (signatures.length === 0) return null;
+
+                const avg = new Array(signatures[0].length).fill(0);
+                signatures.forEach((signature) => {
+                    signature.forEach((value, index) => {
+                        avg[index] += value;
+                    });
+                });
+                return avg.map((value) => value / signatures.length);
+            }
+        </script>
+    </body>
+</html>

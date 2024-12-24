@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Drum Trainer</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                text-align: center;
+                margin: 0;
+                padding: 0;
+                background-color: #f4f4f4;
+                color: #333;
+            }
+            h1 {
+                margin-top: 20px;
+            }
+            #feedback {
+                font-size: 24px;
+                font-weight: bold;
+                margin-top: 20px;
+            }
+            .drum-feedback {
+                margin: 20px auto;
+                padding: 20px;
+                border: 2px solid #333;
+                border-radius: 10px;
+                max-width: 300px;
+                background-color: #fff;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            button {
+                padding: 10px 20px;
+                font-size: 16px;
+                margin-top: 20px;
+                cursor: pointer;
+                border: none;
+                background-color: #007bff;
+                color: white;
+                border-radius: 5px;
+            }
+            button:hover {
+                background-color: #0056b3;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Drum Trainer</h1>
+        <p>Spiele ein Drum, und wir analysieren es!</p>
+        <div class="drum-feedback">
+            <p id="feedback">Klicke auf "Start", um zu beginnen.</p>
+        </div>
+        <button id="startButton">Start</button>
+
+        <script>
+            const startButton = document.getElementById('startButton');
+            const feedback = document.getElementById('feedback');
+
+            // Audio-Kontext und Variablen initialisieren
+            let audioContext;
+            let analyser, microphone;
+
+            const drumFrequencies = {
+                bass: 50, // Bass Drum
+                snare: 200, // Snare Drum
+                hiHat: 500, // Hi-Hat
+            };
+
+            // Funktion zum Starten des Audio-Kontexts
+            startButton.addEventListener('click', () => {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+
+                navigator.mediaDevices
+                    .getUserMedia({ audio: true })
+                    .then((stream) => {
+                        analyser = audioContext.createAnalyser();
+                        microphone = audioContext.createMediaStreamSource(stream);
+                        microphone.connect(analyser);
+                        analyser.fftSize = 2048;
+
+                        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                        function analyzeAudio() {
+                            analyser.getByteFrequencyData(dataArray);
+
+                            // Drum-Detektion
+                            detectDrum(dataArray);
+
+                            // Audio kontinuierlich analysieren
+                            requestAnimationFrame(analyzeAudio);
+                        }
+
+                        analyzeAudio();
+                        feedback.textContent = 'Hör zu...';
+                        startButton.style.display = 'none'; // Button ausblenden nach Start
+                    })
+                    .catch((err) => {
+                        console.error('Mikrofonzugriff fehlgeschlagen:', err);
+                        feedback.textContent = 'Fehler: Mikrofonzugriff verweigert.';
+                    });
+            });
+
+            // Drum-Frequenzen analysieren
+            function detectDrum(dataArray) {
+                const sampleRate = audioContext.sampleRate;
+                const bassValue = getFrequencyValue(dataArray, drumFrequencies.bass, sampleRate);
+                const snareValue = getFrequencyValue(dataArray, drumFrequencies.snare, sampleRate);
+                const hiHatValue = getFrequencyValue(dataArray, drumFrequencies.hiHat, sampleRate);
+
+                // Erkennung von Drums basierend auf Lautstärke
+                let message = 'Kein Drum erkannt.';
+                if (bassValue > 200) message = 'Bass Drum erkannt!';
+                if (snareValue > 200) message = 'Snare erkannt!';
+                if (hiHatValue > 200) message = 'Hi-Hat erkannt!';
+
+                feedback.textContent = message;
+            }
+
+            // Hilfsfunktion: Lautstärke für eine bestimmte Frequenz
+            function getFrequencyValue(dataArray, freq, sampleRate) {
+                const index = Math.round((freq / (sampleRate / 2)) * dataArray.length);
+                return dataArray[index];
+            }
+        </script>
+    </body>
+</html>
